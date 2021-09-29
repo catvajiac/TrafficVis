@@ -4,50 +4,34 @@ import streamlit as st
 
 import draw
 import utils
-import SessionState
 import altair as alt
 import pandas as pd
 alt.data_transformers.enable('csv')
 
 
-def gen_page_content(state, df):
+def gen_page_content(df):
     ''' create Streamlit page
         :param state:           SessionState object storing cluster data
         :param df:              pandas DataFrame containing ad data '''
 
-    # on first iteration, before button press
-    if state.is_first:
-        state.cluster = next(state.gen_clusters)
-        state.index += 1
-        state.is_first = False
-
     # if we've processed all clusters, we show a static end page
-    if state.is_stop:
+    if st.session_state.is_stop:
         st.header("You've finished all examples from this dataset. Thank you!")
         st.balloons()
         return
 
     # feature generation
-    subdf = utils.get_subdf(df, state)
-    print(subdf['micro-clusters'])
+    subdf = utils.get_subdf(df, st.session_state.cluster)
     header_stats, micro_cluster_features = utils.feature_extract(
         subdf)
 
-    utils.write_border(header_stats, state)
-    if 'labels' not in st.session_state:
-        st.session_state.labels = {}
+    utils.write_border(header_stats)
 
     _, last_col = st.columns([10, 1])
-    with last_col:
-        if st.button('Next meta-cluster', on_click=utils.write_labels, args=(filename, state.index, state.cluster, st.session_state.labels)):
-            try:
-                state.cluster = next(state.gen_clusters)
-                state.index += 1
-            except StopIteration:
-                state.is_stop = True
+    last_col.button('Next meta-cluster',
+                    on_click=utils.write_labels, args=([filename]))
 
     left_col, _, mid_col, _, right_col = st.columns((1, 0.1, 1, 0.1, 1))
-
 
     # strip plot with heatmap
     with left_col:
@@ -57,12 +41,10 @@ def gen_page_content(state, df):
         top_df, top_map = utils.top_n(micro_cluster_features, **top_n_params)
         c1, micro_cluster_selector = draw.strip_plot(top_df, **chart_params)
 
-
     # display features over time, aggregated forall clusters
     with mid_col:
         st.subheader('**Metadata over time** of meta-cluster')
         c2 = draw.stream_chart(top_df, micro_cluster_selector)
-
 
     # show map of ad locations
     with right_col:
@@ -72,11 +54,10 @@ def gen_page_content(state, df):
         # dates = st.select_slider(
         #    '', options=date_range, value=(date_range[0], date_range[-1]))
 
-
     c3 = draw.map(subdf, top_map, micro_cluster_selector,
                   (date_range[0], date_range[-1]))
 
-    st.write(draw.top_row(c1, c2, c3))
+    st.write(draw.top_row(c1, c2, c3), use_container_width=True)
 
     left_col, _, right_col = st.columns((4, 0.1, 1))
 
@@ -110,17 +91,8 @@ def gen_page_content(state, df):
 
 # Generate content for app
 st.set_page_config(layout='wide', page_title='Meta-Clustering Classification')
-state_params = {
-    'is_first': True,
-    'index': 0,
-    'cluster': set(),
-    'is_stop': False,
-    'gen_clusters': None
-}
-state = SessionState.get(**state_params)
 
-#file_path = '../InfoShield/data/all_massage_LSH_labels-sample.csv'
-#file_path = './data/metacluster_1.csv'
+
 file_path = './data/meta_clusters_for_labeling.csv'
 
 with st.spinner('Processing data...'):
@@ -129,11 +101,17 @@ with st.spinner('Processing data...'):
 
     df = utils.read_csv(filename)
 
-    if state.is_first:
+    if 'is_first' not in st.session_state:
+        st.session_state.is_first = True
+        st.session_state.index = 0
+        st.session_state.is_stop = False
+        st.session_state.labels = {}
         graph = utils.construct_metaclusters(
             utils.filename_stub(filename), df, columns)
-        state.gen_clusters = utils.gen_ccs(graph)
+        st.session_state.gen_clusters = utils.gen_ccs(graph)
+        st.session_state.cluster = next(st.session_state.gen_clusters)
+        st.session_state.is_first = False
 
 page_opts = ('Landing page', 'Labeling page')
 
-gen_page_content(state, df)
+gen_page_content(df)

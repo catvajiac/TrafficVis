@@ -76,7 +76,7 @@ BY_CLUSTER_PARAMS = ({
 BUTTON_STYLE = '<style>div.row-widget.stRadio > div{flex-direction:row;}</style>'
 
 
-def write_border(stats, state):
+def write_border(stats):
     stats_str = ''
     template = '<div class=stat, style="color: {color};">{text}</div>'
     for name, (count, unique) in stats.items():
@@ -175,6 +175,11 @@ def write_border(stats, state):
             margin-top: 10px;
         }}
 
+        canvas.marks {{
+            max-width: 100%!important;
+            height: auto!important;
+        }}
+
         .stButton {{
             margin-top: -85px;
             font-size: 19px;
@@ -207,7 +212,7 @@ def write_border(stats, state):
         </div>
         {text}
     </div>
-    '''.format(meta_index=state.index+1, text=stats_str), unsafe_allow_html=True)
+    '''.format(meta_index=st.session_state.index+1, text=stats_str), unsafe_allow_html=True)
     # filter:blur(2px);
 
 
@@ -230,13 +235,13 @@ def read_csv(filename, keep_cols=[], rename_cols={}):
 
 
 @st.cache(hash_funcs={types.GeneratorType: id}, show_spinner=False, suppress_st_warning=True)
-def get_subdf(df, state, date_col='day_posted'):
+def get_subdf(df, cluster, date_col='day_posted'):
     ''' get subset of DataFrame based on state.cluster, do location & date processing
         :param df:          DataFrame to take subset of
         :param state:       SessionState object, state.cluster shows subset to take
         :param date_col:    name of DataFrame column containing date
         :return:            subset of DataFrame with nicely formatted locatino & date'''
-    subdf = df[df['LSH label'].isin(state.cluster)].copy()
+    subdf = df[df['LSH label'].isin(cluster)].copy()
 
     subdf = gen_locations(subdf)
 
@@ -250,7 +255,8 @@ def get_subdf(df, state, date_col='day_posted'):
     subdf = subdf.rename(
         columns={date_col: 'days', 'LSH label': 'micro-clusters'}
     ).drop(
-        columns=['site_id', 'city_id', 'state_id', 'country_id', 'category_id', 'date_posted']
+        columns=['site_id', 'city_id', 'state_id',
+                 'country_id', 'category_id', 'date_posted']
     )
     return subdf
 
@@ -354,7 +360,6 @@ def top_n(df, groupby, sortby, n=10):
         ascending=False
     ).index.values[:n]
 
-
     to_map = {num: 'c{}'.format(to_subscript(index))
               for index, num in enumerate(top_n)}
 
@@ -376,14 +381,13 @@ def get_center_scale(lat, lon):
     def scale(lst, const): return const*2 / (max(lst) -
                                              min(lst)) if max(lst) - min(lst) else default_scale
 
-
     scale_lat = scale(lat, 90)
     scale_lon = scale(lon, 180)
 
     center = midpoint(lon)*1.5, midpoint(lat)*1.5
 
-
     return center, min([scale_lat*50, scale_lon*50, default_scale])
+
 
 @st.cache(allow_output_mutation=True)
 def gen_locations(df):
@@ -644,19 +648,25 @@ def get_template_text(i, template, ads):
     return annotated
 
 
-def write_labels(filename, meta_cluster_label, cluster_labels, labels):
-    print('filename:', filename)
+def write_labels(filename):
     label_filename = '{}-meta-labels.csv'.format(os.path.splitext(filename)[0])
     if os.path.exists(label_filename):
         label_df = read_csv(label_filename)
     else:
         label_df = pd.DataFrame(
-            columns=['meta_cluster_label', 'cluster_labels'] + list(labels.keys()))
+            columns=['meta_cluster_label', 'cluster_labels'] + list(st.session_state.labels.keys()))
 
     # add new row
-    row = labels.copy()
-    row['meta_cluster_label'] = meta_cluster_label
-    row['cluster_labels'] = np.array(cluster_labels)
+    row = st.session_state.labels.copy()
+    row['meta_cluster_label'] = st.session_state.index
+    row['cluster_labels'] = np.array(st.session_state.cluster)
+
+    try:
+        st.session_state.cluster = next(st.session_state.gen_clusters)
+        st.session_state.index += 1
+        print(st.session_state.index, st.session_state.cluster)
+    except StopIteration:
+        st.session_state.is_stop = True
 
     label_df = label_df.append(row, ignore_index=True)
 

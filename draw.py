@@ -12,7 +12,7 @@ import types
 
 alt.data_transformers.enable('csv')
 
-#@st.cache(show_spinner=False)
+@st.cache(show_spinner=False)
 def top_row(c1, c2, c3):
     df = pd.DataFrame({'day_posted': [0]})
     dummy_chart = alt.Chart(df).mark_geoshape().encode(
@@ -170,7 +170,7 @@ def strip_plot(df, y, facet, tooltip, sort=None, show_labels=True, colorscheme='
     ).add_selection(
         micro_cluster
     ).properties(
-        width=750,
+        width=700,
         height=350
     ), micro_cluster
 
@@ -247,7 +247,7 @@ def contact_bar_chart(data, col):
         y=alt.Y(col, sort='-x'),
         color=alt.value('#40bcc9')
     ).properties(
-        width=700,
+        width=500,
         height=400
     )
 
@@ -270,10 +270,6 @@ def stream_chart(df, micro_cluster_selector):
 
     missing_days = set(days) - set(df.days)
     cutoff_day = days[int(len(days) * 5 / 8)]
-
-    print(cutoff_day)
-    print(df.days)
-
 
     impute_df = []
     for day in missing_days:
