@@ -27,7 +27,10 @@ def gen_page_content(df):
 
     utils.write_border(header_stats)
 
-    _, last_col = st.columns([10, 1])
+    mcs = sorted(['c{}'.format(val)
+                 for _, val in utils.SUBSCRIPT_DICT.items()])
+    micro_cluster_selector = st.multiselect(
+        'Pick a subset of micro-clusters to inspect', mcs)
 
     left_col, _, mid_col, _, right_col = st.columns((1, 0.1, 1, 0.1, 1))
 
@@ -37,12 +40,14 @@ def gen_page_content(df):
 
         top_n_params, chart_params = utils.BY_CLUSTER_PARAMS
         top_df, top_map = utils.top_n(micro_cluster_features, **top_n_params)
-        c1, micro_cluster_selector = draw.strip_plot(top_df, **chart_params)
+        c1 = draw.strip_plot(top_df, micro_cluster_selector, **chart_params)
+        st.write(c1)
 
     # display features over time, aggregated forall clusters
     with mid_col:
         st.subheader('**Metadata over time** of meta-cluster')
         c2 = draw.stream_chart(top_df, micro_cluster_selector)
+        st.write(c2)
 
     # show map of ad locations
     with right_col:
@@ -52,10 +57,11 @@ def gen_page_content(df):
         # dates = st.select_slider(
         #    '', options=date_range, value=(date_range[0], date_range[-1]))
 
-    c3 = draw.map(subdf, top_map, micro_cluster_selector,
-                  (date_range[0], date_range[-1]))
+        c3 = draw.map(subdf, top_map, micro_cluster_selector,
+                      (date_range[0], date_range[-1]))
+        st.write(c3, use_container_width=True)
 
-    st.write(draw.top_row(c1, c2, c3), use_container_width=True)
+    #st.write(draw.top_row(c1, c2, c3), use_container_width=True)
 
     left_col, _, right_col = st.columns((4, 0.1, 1))
 
@@ -63,14 +69,20 @@ def gen_page_content(df):
     with left_col:
         st.subheader('**Ad text** organized by micro-cluster')
         is_infoshield = True
-        label = subdf['micro-clusters'].value_counts().idxmax()
-        start_path = '../InfoShield/results/{}'.format(label)
+
+        start_path = '../InfoShield/results/'
         if not os.path.exists(start_path):
-            pass
             st.warning(
                 'We cannot find InfoShield results for this data, so only the ad text is displayed.')
             is_infoshield = False
-        draw.templates(start_path, df, is_infoshield)
+
+        if len(micro_cluster_selector):
+            labels = {v: k for k, v in top_map.items(
+            ) if v in micro_cluster_selector}
+        else:
+            labels = {v: k for k, v in top_map.items()}
+        draw.templates(
+            start_path, subdf, labels, is_infoshield)
 
     # labeling table
     labels = []

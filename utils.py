@@ -20,6 +20,9 @@ DATE_FORMAT = "%e %b %y"
 BIG_FONT_SIZE = 24
 SMALL_FONT_SIZE = 20
 
+SUBSCRIPT_DICT = {'0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
+                  '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉'}
+
 
 # FEATURE_COLS = ('ad_id', 'email', 'image_id', 'phone', 'social')
 
@@ -335,11 +338,9 @@ def top_n(df, groupby, sortby, n=10):
         :param sortby:  column from DataFrame to aggregate & sort by
         :param n:       number of groups to return
         :return         DataFrame containing data from top n groups'''
-    subscript_dict = {'1': '₁', '2': '₂', '3': '₃', '4': '₄',
-                      '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉', '0': '₀'}
 
     def to_subscript(num): return ''.join(
-        [subscript_dict[s] for s in str(num)])
+        [SUBSCRIPT_DICT[s] for s in str(num)])
 
     df = df.reset_index()
 
@@ -376,7 +377,7 @@ def get_center_scale(lat, lon):
     scale_lat = scale(lat, 90)
     scale_lon = scale(lon, 180)
 
-    center = midpoint(lon)*1.5, midpoint(lat)*1.5
+    center = midpoint(lon), midpoint(lat)
 
     return center, min([scale_lat*50, scale_lon*50, default_scale])
 
@@ -548,29 +549,31 @@ def gen_ccs(graph):
 
 
 # Text annotation utils
-def get_all_template_text(directory):
+def get_all_template_text(base_dir, labels):
     ''' check a directory for all possible templates and annotate them
         :param directory:   directory to check for subdirs containing templates
         :return:            string to write with annotate_text function '''
-    if directory.endswith('.pkl'):
-        pickled = pkl.load(open(directory, 'rb'))
-        return get_template_text(*pickled, 0)
     to_write = []
-    is_first = True
-    for i, folder in enumerate(os.listdir(directory)):
-        result_loc = '{}/{}/text.pkl'.format(directory, folder)
-        if is_first:
-            is_first = False
-        else:
-            to_write.append('<br>')
+    for label_name, label in labels.items():
+        directory = base_dir + str(label)
 
-        pickled = pkl.load(open(result_loc, 'rb'))
-        to_write += get_template_text(*pickled)
+        is_first = True
+        for _, folder in enumerate(os.listdir(directory)):
+            result_loc = '{}/{}/text.pkl'.format(directory, folder)
+            if is_first:
+                is_first = False
+            else:
+                to_write.append('<br>')
+
+            pickled = pkl.load(open(result_loc, 'rb'))
+            to_write += get_template_text(*pickled,
+                                          label_name, len(labels) == 10)
+            break
 
     return to_write
 
 
-def get_template_text(i, template, ads):
+def get_template_text(i, template, ads, label_name, templates_only):
     ''' annotate a particular template with relevant ads as calculated from InfoShield
         :param template:    list of tokens in template
         :param ads:         list of tuples of form (type_index, token)
@@ -585,39 +588,40 @@ def get_template_text(i, template, ads):
     }
 
     to_write = [
-        '<p class=ad_text><b>Micro-cluster #{}:</b> {}</p>'.format(i, template), '<br>']
+        '<p class=ad_text><b>{}:</b> {}</p>'.format(label_name, template), '<br>']
 
-    for ad_index, ad in enumerate(ads):
-        if ad_index >= 20:
-            break
-        to_write.append('<p><b> Ad #{}:</b>'.format(ad_index+1))
-        prev_type = None
-        for color_i, token in ad:
-            if token == ' ':
-                continue
+    if not templates_only:
+        for ad_index, ad in enumerate(ads):
+            if ad_index >= 20:
+                break
+            to_write.append('<p><b> Ad #{}:</b>'.format(ad_index+1))
+            prev_type = None
+            for color_i, token in ad:
+                if token == ' ':
+                    continue
 
-            curr_type, color = index_to_type[color_i]
+                curr_type, color = index_to_type[color_i]
 
-            if curr_type == 'const':
-                if prev_type == 'const':
-                    prev_token = to_write[-1]
-                    to_write[-1] = '{} {}'.format(prev_token, token)
-                else:
-                    to_write.append(token.replace(' ', ''))
+                if curr_type == 'const':
+                    if prev_type == 'const':
+                        prev_token = to_write[-1]
+                        to_write[-1] = '{} {}'.format(prev_token, token)
+                    else:
+                        to_write.append(token.replace(' ', ''))
+                    prev_type = curr_type
+                    continue
+
+                if curr_type == prev_type:
+                    prev_token = to_write[-1][0]
+                    to_write[-1] = ('{} {}'.format(prev_token,
+                                    token), curr_type, color)
+                    continue
+
                 prev_type = curr_type
-                continue
 
-            if curr_type == prev_type:
-                prev_token = to_write[-1][0]
-                to_write[-1] = ('{} {}'.format(prev_token,
-                                token), curr_type, color)
-                continue
+                to_write.append((token, curr_type, color))
 
-            prev_type = curr_type
-
-            to_write.append((token, curr_type, color))
-
-        to_write.append('</p>')
+            to_write.append('</p>')
 
     # now create annotation objects. Couldn't before since we need to access prev_type, etc
     annotated = []

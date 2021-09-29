@@ -12,6 +12,7 @@ import types
 
 alt.data_transformers.enable('csv')
 
+
 @st.cache(show_spinner=False)
 def top_row(c1, c2, c3):
     df = pd.DataFrame({'day_posted': [0]})
@@ -37,17 +38,17 @@ def top_row(c1, c2, c3):
     )
 
 
-def templates(directory, df, is_infoshield):
+def templates(directory, df, labels, is_infoshield):
     ''' draw annotated text
         :param directory:   directory to look for InfoShield templates in
         :return:            altair annotated text '''
 
     if is_infoshield:
-        to_write = utils.get_all_template_text(directory)
+        to_write = utils.get_all_template_text(
+            directory, labels)
     else:
-        subdf = df.iloc[0:20]
         to_write = ['{}:<br>{}'.format(*tup)
-                    for tup in subdf[['title', 'body']].values]
+                    for tup in df[['title', 'body']].values]
         to_write = [annotation(
             text + '<br>', background_color='#f9f9f9', font_size='20px') for text in to_write]
 
@@ -56,12 +57,16 @@ def templates(directory, df, is_infoshield):
                    height=580,
                    )
 
-@st.cache(hash_funcs={alt.vegalite.v4.api.Selection: lambda x: x.name}, allow_output_mutation=True)
+
+# @st.cache(hash_funcs={alt.vegalite.v4.api.Selection: lambda x: x.name}, allow_output_mutation=True)
 def map(subdf, top_map, micro_cluster_selector, date_range):
     ''' generate map with ad location data
         :param df:  Pandas DataFrame with latitude, longitude, and count data
         :return:    altair map with ad counts displayed '''
-    
+
+    if len(micro_cluster_selector):
+        top_map = {k: v for k, v in top_map.items(
+        ) if v in micro_cluster_selector}
     subdf = subdf[subdf['micro-clusters'].isin(top_map.keys())]
     df = subdf[['ad_id', 'days', 'lat', 'lon', 'location']].copy()
     df['micro-clusters'] = subdf['micro-clusters'].apply(
@@ -69,7 +74,6 @@ def map(subdf, top_map, micro_cluster_selector, date_range):
 
     date_range = pd.date_range(*date_range)
     df = df[((df.lat != 1) | (df.lon != 1)) & (df.days.isin(date_range))]
-
 
     countries = alt.topo_feature(data.world_110m.url, 'countries')
 
@@ -85,10 +89,7 @@ def map(subdf, top_map, micro_cluster_selector, date_range):
     center, scale = utils.get_center_scale(agg_df.lat, agg_df.lon)
     domain = [agg_df['count'].min(), agg_df['count'].max()]
 
-
-    scatter = alt.Chart(agg_df).transform_filter(
-        micro_cluster_selector
-    ).transform_aggregate(
+    scatter = alt.Chart(agg_df).transform_aggregate(
         groupby=['location'],
         count='sum(count)',
         lat='mean(lat)',
@@ -135,8 +136,8 @@ def bubble_chart(df, y, facet, tooltip):
     )
 
 
-@st.cache(allow_output_mutation=True)
-def strip_plot(df, y, facet, tooltip, sort=None, show_labels=True, colorscheme='blues'):
+# @st.cache(allow_output_mutation=True)
+def strip_plot(df, micro_cluster_selector, y, facet, tooltip, sort=None, show_labels=True, colorscheme='blues'):
     ''' create strip plot with heatmap
         :param df:      Pandas DataFrame to display
         :param y:       column of DataFrame to use for bubble size
@@ -144,13 +145,19 @@ def strip_plot(df, y, facet, tooltip, sort=None, show_labels=True, colorscheme='
         :param tooltip: list of DataFrame columns to include in tooltip
         :return:        altair strip plot '''
 
-    thickness = 800 / (max(df.days.dt.day) - min(df.days.dt.day) + 1) / 10
+    thickness = 1000 / (max(df.days.dt.day) - min(df.days.dt.day) + 1) / 10
     sort_ = sorted(list(df[facet.split(':')[0]].unique()))
-    micro_cluster = alt.selection_single(
-        fields=[facet.split(':')[0]], nearest=True)
 
-    def gen_scale(color):
-        return alt.Color(y+':N', scale=alt.Scale(scheme=color, type='log'))
+    def gen_color():
+        blue = alt.Color(y+':Q', scale=alt.Scale(scheme=colorscheme))
+        grey = alt.value('lightgray')
+        pred = alt.FieldOneOfPredicate(
+            'micro-clusters', micro_cluster_selector)
+
+        if len(micro_cluster_selector):
+            return alt.condition(pred, blue, grey)
+
+        return blue
 
     return alt.Chart(df).mark_tick(thickness=thickness, lineHeight=100).encode(
         x=alt.X('days:T',
@@ -162,17 +169,24 @@ def strip_plot(df, y, facet, tooltip, sort=None, show_labels=True, colorscheme='
                               tickWidth=0, labelFontSize=utils.SMALL_FONT_SIZE),
                 sort=sort_,
                 ),
-        color=alt.condition(
-            micro_cluster,
-            alt.Color(y+':Q', scale=alt.Scale(scheme=colorscheme)),
-            alt.value('lightgray')),
+        color=gen_color(),
         tooltip=tooltip
-    ).add_selection(
-        micro_cluster
     ).properties(
         width=700,
-        height=350
-    ), micro_cluster
+        height=400
+    ).configure_view(
+        stroke=None
+    ).configure_axis(
+        labelFontSize=utils.SMALL_FONT_SIZE,
+        titleFontSize=utils.BIG_FONT_SIZE,
+    ).configure_legend(
+        gradientLength=400,
+        gradientThickness=5,
+        labelFontSize=utils.SMALL_FONT_SIZE,
+        titleFontSize=utils.BIG_FONT_SIZE,
+        orient='top',
+        title=None
+    )
 
 
 def bar_chart(data, column):
@@ -252,7 +266,7 @@ def contact_bar_chart(data, col):
     )
 
 
-#@st.cache(hash_funcs={alt.vegalite.v4.api.Selection: lambda x: x.name}, allow_output_mutation=True)
+# @st.cache(hash_funcs={alt.vegalite.v4.api.Selection: lambda x: x.name}, allow_output_mutation=True)
 def stream_chart(df, micro_cluster_selector):
     def gen_cutoff_str(cutoff_day, op):
         yr = 'year(datum.days)'
@@ -263,6 +277,8 @@ def stream_chart(df, micro_cluster_selector):
             yr=yr, mon=mon, day=day, cutoff_yr=cutoff_day.year, cutoff_mon=cutoff_day.month, cutoff_day=cutoff_day.day, op=op
         )
 
+    if len(micro_cluster_selector):
+        df = df[df['micro-clusters'].isin(micro_cluster_selector)]
 
     # handle missing days in df
     days = pd.to_datetime(pd.date_range(
@@ -283,7 +299,6 @@ def stream_chart(df, micro_cluster_selector):
     bot_df = pd.concat([df, pd.DataFrame({'days': list(days)})])
     top_df = pd.concat([df, pd.DataFrame(impute_df)])
 
-
     # Create a selection that chooses the nearest point & selects based on x-value
     nearest = alt.selection_single(
         nearest=True,
@@ -296,10 +311,9 @@ def stream_chart(df, micro_cluster_selector):
     range_ = list(utils.STAT_TO_COLOR.values())
 
     # The basic line
-    line = alt.Chart(top_df).transform_filter(
-        micro_cluster_selector
-    ).transform_fold(
-        ['ads', 'images', 'phones', 'location', 'micro-clusters', 'social accts', 'emails'],
+    line = alt.Chart(top_df).transform_fold(
+        ['ads', 'images', 'phones', 'location',
+            'micro-clusters', 'social accts', 'emails'],
         as_=['variable', 'value']
     ).transform_aggregate(
         groupby=['days', 'variable'],
@@ -320,9 +334,7 @@ def stream_chart(df, micro_cluster_selector):
 
     # Transparent selectors across the chart. This is what tells us
     # the x-value of the cursor
-    selectors = alt.Chart(top_df).transform_filter(
-        micro_cluster_selector
-    ).transform_fold(
+    selectors = alt.Chart(top_df).transform_fold(
         ['ads', 'images', 'phones', 'location', 'micro-clusters'],
         as_=['variable', 'value']
     ).transform_aggregate(
@@ -449,4 +461,15 @@ def stream_chart(df, micro_cluster_selector):
         height=50
     )
 
-    return alt.vconcat(c1, c2)
+    return alt.vconcat(c1, c2).configure_view(
+        stroke=None
+    ).configure_axis(
+        labelFontSize=utils.SMALL_FONT_SIZE,
+        titleFontSize=utils.BIG_FONT_SIZE,
+    ).configure_legend(
+        gradientLength=400,
+        labelFontSize=utils.SMALL_FONT_SIZE,
+        titleFontSize=utils.BIG_FONT_SIZE,
+        orient='top',
+        title=None
+    )
