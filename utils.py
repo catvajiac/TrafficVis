@@ -110,7 +110,7 @@ def write_border(stats):
     st.write('''
     <style>
         p {{
-            font-size: 20px;
+            font-size: 18px;
             margin: 0;
         }}
 
@@ -184,12 +184,16 @@ def write_border(stats):
         }}
 
         .stSlider {{
-            padding: 0px 11% 0px 11%;
-            font-size: 20px;
+            padding: 0px 13% 0px 13%;
+            font-size: 14px;
         }}
 
         [data-testid] {{
-            font-size: 16px;
+            font-size: 14px;
+        }}
+
+        .stForm {{
+            padding: 50px;
         }}
 
         div.stButton > button:first-child {{
@@ -662,6 +666,7 @@ def write_labels(filename):
         st.session_state.index += 1
     except StopIteration:
         st.session_state.is_stop = True
+    st.session_state.labels = {k: 0 for k in st.session_state.labels}
 
     label_df = label_df.append(row, ignore_index=True)
 

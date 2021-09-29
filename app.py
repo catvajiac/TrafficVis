@@ -61,13 +61,19 @@ def gen_page_content(df):
                       (date_range[0], date_range[-1]))
         st.write(c3, use_container_width=True)
 
-    #st.write(draw.top_row(c1, c2, c3), use_container_width=True)
+    # st.write(draw.top_row(c1, c2, c3), use_container_width=True)
 
-    left_col, _, right_col = st.columns((4, 0.1, 1))
+    left_col, _, right_col = st.columns((4, 0.05, 1.2))
 
     # template / ad text visualization
     with left_col:
-        st.subheader('**Ad text** organized by micro-cluster')
+        if len(micro_cluster_selector):
+            st.subheader(
+                '**Ad text** organized by micro-cluster, for {}'.format(
+                    ', '.join(micro_cluster_selector)))
+        else:
+            st.subheader(
+                '**Template text:** select a micro-cluster to see actual ads')
         is_infoshield = True
 
         start_path = '../InfoShield/results/'
@@ -96,7 +102,7 @@ def gen_page_content(df):
                 st.write(
                     '<p class="label_button">{}</p>'.format(cluster_type), unsafe_allow_html=True)
                 labels.append(
-                    st.select_slider('',  options, key=str(index)))
+                    st.select_slider('',  options, key=str(index), value=options[0]))
 
             st.form_submit_button('Next meta-cluster',
                                   on_click=utils.write_labels, args=([filename]))
