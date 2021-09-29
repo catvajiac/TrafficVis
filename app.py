@@ -29,59 +29,65 @@ def gen_page_content(state, df):
 
     # feature generation
     subdf = utils.get_subdf(df, state)
-    header_stats, micro_cluster_features, timeline_features = utils.feature_extract(
+    print(subdf['micro-clusters'])
+    header_stats, micro_cluster_features = utils.feature_extract(
         subdf)
-    # stats = utils.basic_stats(subdf)
 
     utils.write_border(header_stats, state)
     if 'labels' not in st.session_state:
         st.session_state.labels = {}
 
-    _, last_col = st.beta_columns([10, 1])
+    _, last_col = st.columns([10, 1])
     with last_col:
         if st.button('Next meta-cluster', on_click=utils.write_labels, args=(filename, state.index, state.cluster, st.session_state.labels)):
             try:
                 state.cluster = next(state.gen_clusters)
+                state.index += 1
             except StopIteration:
                 state.is_stop = True
 
-    left_col, _, mid_col, _, right_col = st.beta_columns((1, 0.1, 1, 0.1, 1))
+    left_col, _, mid_col, _, right_col = st.columns((1, 0.1, 1, 0.1, 1))
+
 
     # strip plot with heatmap
     with left_col:
-        st.header('**# Ads over time**: one row is one micro-cluster')
+        st.subheader('**# Ads over time**: one row is one micro-cluster')
 
         top_n_params, chart_params = utils.BY_CLUSTER_PARAMS
-        top_df = utils.top_n(micro_cluster_features, **top_n_params)
-        st.altair_chart(draw.strip_plot(top_df, **chart_params),
-                        use_container_width=True)
+        top_df, top_map = utils.top_n(micro_cluster_features, **top_n_params)
+        c1, micro_cluster_selector = draw.strip_plot(top_df, **chart_params)
+
 
     # display features over time, aggregated forall clusters
     with mid_col:
-        st.header('**Metadata over time** of meta-cluster')
-        st.altair_chart(draw.stream_chart(timeline_features),
-                        use_container_width=True)
+        st.subheader('**Metadata over time** of meta-cluster')
+        c2 = draw.stream_chart(top_df, micro_cluster_selector)
+
 
     # show map of ad locations
     with right_col:
-        st.header('**Geographical spread of ads**: select a range of dates')
+        st.subheader('**Geographical spread of ads**')
         date_range = pd.date_range(min(subdf.days), max(
             subdf.days)).strftime(utils.DATE_FORMAT)
-        dates = st.select_slider(
-            '', options=date_range, value=(date_range[0], date_range[-1]))
-        st.write(
-            draw.map(subdf[['ad_id', 'lat', 'lon', 'location', 'days']], dates))
+        # dates = st.select_slider(
+        #    '', options=date_range, value=(date_range[0], date_range[-1]))
 
-    left_col, _, right_col = st.beta_columns((4, 0.1, 1))
+
+    c3 = draw.map(subdf, top_map, micro_cluster_selector,
+                  (date_range[0], date_range[-1]))
+
+    st.write(draw.top_row(c1, c2, c3))
+
+    left_col, _, right_col = st.columns((4, 0.1, 1))
 
     # template / ad text visualization
     with left_col:
-        st.header('**Ad text** organized by micro-cluster')
+        st.subheader('**Ad text** organized by micro-cluster')
         is_infoshield = True
-        label = subdf['LSH label'].value_counts().idxmax()
-        label = 6
+        label = subdf['micro-clusters'].value_counts().idxmax()
         start_path = '../InfoShield/results/{}'.format(label)
         if not os.path.exists(start_path):
+            pass
             st.warning(
                 'We cannot find InfoShield results for this data, so only the ad text is displayed.')
             is_infoshield = False
@@ -113,11 +119,13 @@ state_params = {
 }
 state = SessionState.get(**state_params)
 
-file_path = '../InfoShield/data/all_massage_LSH_labels-sample.csv'
+#file_path = '../InfoShield/data/all_massage_LSH_labels-sample.csv'
+#file_path = './data/metacluster_1.csv'
+file_path = './data/meta_clusters_for_labeling.csv'
 
 with st.spinner('Processing data...'):
     filename = file_path
-    columns = ['phone', 'email', 'social', 'image_id']
+    columns = ['image_id', 'phone', 'email', 'social']
 
     df = utils.read_csv(filename)
 
@@ -128,5 +136,4 @@ with st.spinner('Processing data...'):
 
 page_opts = ('Landing page', 'Labeling page')
 
-clean_df = utils.pre_process_df(df, filename)
-gen_page_content(state, clean_df)
+gen_page_content(state, df)

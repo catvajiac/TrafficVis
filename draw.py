@@ -1,16 +1,40 @@
 import altair as alt
-from altair.vegalite.v4.schema.channels import StrokeWidth
 import pandas as pd
+from datetime import date
 
-from itertools import chain, product
 from vega_datasets import data
 
 import utils
 from annotated_text import annotated_text, annotation
 
 import streamlit as st
+import types
 
 alt.data_transformers.enable('csv')
+
+#@st.cache(show_spinner=False)
+def top_row(c1, c2, c3):
+    df = pd.DataFrame({'day_posted': [0]})
+    dummy_chart = alt.Chart(df).mark_geoshape().encode(
+        x='day_posted:T',
+        y='day_posted:T',
+        opacity=alt.value(0)
+    ).properties(
+        width=75
+    )
+
+    return alt.hconcat(c1, dummy_chart, c2, dummy_chart, c3, center=True).configure_view(
+        stroke=None
+    ).configure_axis(
+        labelFontSize=utils.SMALL_FONT_SIZE,
+        titleFontSize=utils.BIG_FONT_SIZE,
+    ).configure_legend(
+        gradientLength=400,
+        labelFontSize=utils.SMALL_FONT_SIZE,
+        titleFontSize=utils.BIG_FONT_SIZE,
+        orient='top',
+        title=None
+    )
 
 
 def templates(directory, df, is_infoshield):
@@ -22,42 +46,59 @@ def templates(directory, df, is_infoshield):
         to_write = utils.get_all_template_text(directory)
     else:
         subdf = df.iloc[0:20]
-        to_write = ['{}:<br>{}'.format(*tup) for tup in subdf[['title', 'body']].values]
-        to_write = [annotation(text + '<br>', background_color='#f9f9f9', font_size='20px') for text in to_write]
+        to_write = ['{}:<br>{}'.format(*tup)
+                    for tup in subdf[['title', 'body']].values]
+        to_write = [annotation(
+            text + '<br>', background_color='#f9f9f9', font_size='20px') for text in to_write]
 
     annotated_text(*to_write,
-        scrolling=True,
-        height=580,
-    )
+                   scrolling=True,
+                   height=580,
+                   )
 
-@st.cache(allow_output_mutation=True)
-def map(df, date_range):
+@st.cache(hash_funcs={alt.vegalite.v4.api.Selection: lambda x: x.name}, allow_output_mutation=True)
+def map(subdf, top_map, micro_cluster_selector, date_range):
     ''' generate map with ad location data
         :param df:  Pandas DataFrame with latitude, longitude, and count data
         :return:    altair map with ad counts displayed '''
-    center, scale = utils.get_center_scale(df.lat, df.lon)
+    
+    subdf = subdf[subdf['micro-clusters'].isin(top_map.keys())]
+    df = subdf[['ad_id', 'days', 'lat', 'lon', 'location']].copy()
+    df['micro-clusters'] = subdf['micro-clusters'].apply(
+        lambda val: top_map[val])
+
     date_range = pd.date_range(*date_range)
     df = df[((df.lat != 1) | (df.lon != 1)) & (df.days.isin(date_range))]
 
+
     countries = alt.topo_feature(data.world_110m.url, 'countries')
 
-    base = alt.Chart(countries, width='container').mark_geoshape(
+    base = alt.Chart(countries).mark_geoshape(
         fill='#eeeeee',
         stroke='#DDDDDD'
     ).properties(
-        height=355,
+        height=400,
         width=700
     )
 
     agg_df = utils.aggregate_locations(df)
-
+    center, scale = utils.get_center_scale(agg_df.lat, agg_df.lon)
     domain = [agg_df['count'].min(), agg_df['count'].max()]
 
-    scatter = alt.Chart(agg_df, width='container').mark_circle(
+
+    scatter = alt.Chart(agg_df).transform_filter(
+        micro_cluster_selector
+    ).transform_aggregate(
+        groupby=['location'],
+        count='sum(count)',
+        lat='mean(lat)',
+        lon='mean(lon)'
+    ).mark_circle(
         color=utils.LOCATION_COLOR,
         fillOpacity=.5,
     ).encode(
-        size=alt.Size('count:Q', scale=alt.Scale(range=domain, domain=domain), legend=None),
+        size=alt.Size('count:Q', scale=alt.Scale(
+            domain=domain), legend=None),
         longitude='lon:Q',
         latitude='lat:Q',
         tooltip=['location', 'count']
@@ -65,22 +106,13 @@ def map(df, date_range):
 
     return (base + scatter).project(
         'equirectangular',
-        scale=scale,
-        center=center
-    ).configure_axis(
-        labelFontSize=utils.SMALL_FONT_SIZE,
-        titleFontSize=utils.BIG_FONT_SIZE,
-    ).configure_legend(
-        gradientLength=275,
-        labelFontSize=utils.SMALL_FONT_SIZE,
-        titleFontSize=utils.BIG_FONT_SIZE,
-    ).configure_axisX(
-        labelAlign='left'
+        center=center,
+        scale=scale
     )
 
 
 def bubble_chart(df, y, facet, tooltip):
-    ''' create bubble chart 
+    ''' create bubble chart
         :param df:      Pandas DataFrame to display
         :param y:       column of DataFrame to use for bubble size
         :param facet:   column of DataFrame to create facet with
@@ -102,6 +134,7 @@ def bubble_chart(df, y, facet, tooltip):
         stroke=None
     )
 
+
 @st.cache(allow_output_mutation=True)
 def strip_plot(df, y, facet, tooltip, sort=None, show_labels=True, colorscheme='blues'):
     ''' create strip plot with heatmap
@@ -111,34 +144,35 @@ def strip_plot(df, y, facet, tooltip, sort=None, show_labels=True, colorscheme='
         :param tooltip: list of DataFrame columns to include in tooltip
         :return:        altair strip plot '''
 
-    thickness = 600 / (max(df.days.dt.day) - min(df.days.dt.day) + 1) / 10
+    thickness = 800 / (max(df.days.dt.day) - min(df.days.dt.day) + 1) / 10
     sort_ = sorted(list(df[facet.split(':')[0]].unique()))
+    micro_cluster = alt.selection_single(
+        fields=[facet.split(':')[0]], nearest=True)
+
+    def gen_scale(color):
+        return alt.Color(y+':N', scale=alt.Scale(scheme=color, type='log'))
+
     return alt.Chart(df).mark_tick(thickness=thickness, lineHeight=100).encode(
         x=alt.X('days:T',
-            axis=alt.Axis(grid=False, tickCount=5, format=utils.DATE_FORMAT),
-            title=''),
+                axis=alt.Axis(grid=False, tickCount=5,
+                              format=utils.DATE_FORMAT),
+                title=''),
         y=alt.Y(facet,
-            axis=alt.Axis(grid=False, domain=False, title='', labelPadding=10, tickWidth=0, labelFontSize=utils.SMALL_FONT_SIZE),
-            sort=sort_,
-        ),
-        color=alt.Color(y, scale=alt.Scale(scheme=alt.SchemeParams(name=colorscheme, extent=[0, 1]),
-            type='log')),
-        tooltip=tooltip,
+                axis=alt.Axis(grid=False, domain=False, title='', labelPadding=10,
+                              tickWidth=0, labelFontSize=utils.SMALL_FONT_SIZE),
+                sort=sort_,
+                ),
+        color=alt.condition(
+            micro_cluster,
+            alt.Color(y+':Q', scale=alt.Scale(scheme=colorscheme)),
+            alt.value('lightgray')),
+        tooltip=tooltip
+    ).add_selection(
+        micro_cluster
     ).properties(
-        width=650,
-        height=480
-    ).configure_view(
-        stroke=None
-    ).configure_axis(
-        labelFontSize=utils.SMALL_FONT_SIZE,
-        titleFontSize=utils.BIG_FONT_SIZE,
-    ).configure_legend(
-        gradientLength=300,
-        labelFontSize=utils.SMALL_FONT_SIZE,
-        titleFontSize=utils.BIG_FONT_SIZE,
-        orient='top',
-        title=None
-    )
+        width=750,
+        height=350
+    ), micro_cluster
 
 
 def bar_chart(data, column):
@@ -148,9 +182,10 @@ def bar_chart(data, column):
         :return:        altair bar plot '''
 
     return alt.Chart(data).mark_area().encode(
-         x=alt.X(column, sort='-y', axis=alt.Axis(labels=False, grid=False)),
-         y=alt.Y('count():Q', axis=alt.Axis(grid=False), title='Clusters (ordered by size)'),
-         tooltip=[alt.Tooltip('count()', title='Number of ads in cluster')]
+        x=alt.X(column, sort='-y', axis=alt.Axis(labels=False, grid=False)),
+        y=alt.Y('count():Q', axis=alt.Axis(grid=False),
+                title='Clusters (ordered by size)'),
+        tooltip=[alt.Tooltip('count()', title='Number of ads in cluster')]
     ).properties(
         width=600,
         height=400
@@ -172,7 +207,7 @@ def timeline(data, date_col='day_posted:T'):
     ).mark_point().encode(
         x=alt.X(date_col, title='Day', axis=alt.Axis(grid=False)),
         y=alt.Y('num_ads:Q', title='Number of ads', axis=alt.Axis(grid=False)),
-        #tooltip=[alt.Tooltip(date_col, title='Day'), alt.Tooltip('num_ads:Q', title='Number of ads')]
+        # tooltip=[alt.Tooltip(date_col, title='Day'), alt.Tooltip('num_ads:Q', title='Number of ads')]
     ).properties(
         width=700,
         height=400
@@ -191,8 +226,10 @@ def location_timeline(data, date_col='day_posted:T'):
         groupby=[date_s]
     ).mark_point().encode(
         x=alt.X(date_col, title='Day', axis=alt.Axis(grid=False)),
-        y=alt.Y('num_locs:Q', title='Number of locations', axis=alt.Axis(grid=False)),
-        tooltip=[alt.Tooltip(date_col, title='Day'), alt.Tooltip('num_locs:Q', title='Number of locations')]
+        y=alt.Y('num_locs:Q', title='Number of locations',
+                axis=alt.Axis(grid=False)),
+        tooltip=[alt.Tooltip(date_col, title='Day'), alt.Tooltip(
+            'num_locs:Q', title='Number of locations')]
     ).properties(
         width=700,
         height=400
@@ -215,37 +252,71 @@ def contact_bar_chart(data, col):
     )
 
 
-@st.cache(allow_output_mutation=True)
-def stream_chart(df):
+#@st.cache(hash_funcs={alt.vegalite.v4.api.Selection: lambda x: x.name}, allow_output_mutation=True)
+def stream_chart(df, micro_cluster_selector):
+    def gen_cutoff_str(cutoff_day, op):
+        yr = 'year(datum.days)'
+        mon = 'month(datum.days)'
+        day = 'day(datum.days)'
 
-    days = pd.to_datetime(pd.date_range(min(df.days), max(df.days)).date, utc=True)
+        return '({yr} {op} {cutoff_yr}) | ({yr} == {cutoff_yr}) & ({mon} {op} {cutoff_mon}) | ({yr} == {cutoff_yr}) & ({mon} == {cutoff_mon}) & ({day} {op} {cutoff_day})'.format(
+            yr=yr, mon=mon, day=day, cutoff_yr=cutoff_day.year, cutoff_mon=cutoff_day.month, cutoff_day=cutoff_day.day, op=op
+        )
 
-    df_days = pd.to_datetime(df.days.values, utc=True)
-    missing_days = set(days) - set(df_days)
+
+    # handle missing days in df
+    days = pd.to_datetime(pd.date_range(
+        min(df.days), max(df.days)).date)
+
+    missing_days = set(days) - set(df.days)
+    cutoff_day = days[int(len(days) * 5 / 8)]
+
+    print(cutoff_day)
+    print(df.days)
 
 
-    missing_data = []
-    for var in ('micro-clusters', 'ads', 'images', 'phones', 'locations'):
-        missing_data += [{'days': d, 'variable': var, 'value': 0} for d in missing_days]
+    impute_df = []
+    for day in missing_days:
+        for micro_cluster in df['micro-clusters'].unique():
+            row = {k: 0 for k in df.columns if k not in (
+                'micro-clusters', 'days')}
+            row['micro-clusters'] = micro_cluster
+            row['days'] = day
+            impute_df.append(row)
 
-    df = pd.concat([df, pd.DataFrame(missing_data)])
+    bot_df = pd.concat([df, pd.DataFrame({'days': list(days)})])
+    top_df = pd.concat([df, pd.DataFrame(impute_df)])
+
 
     # Create a selection that chooses the nearest point & selects based on x-value
     nearest = alt.selection_single(
         nearest=True,
         on='mouseover',
-       fields=['days'],
-       empty='none'
+        fields=['days'],
+        empty='none'
     )
 
     domain = list(utils.STAT_TO_COLOR.keys())
     range_ = list(utils.STAT_TO_COLOR.values())
 
     # The basic line
-    line = alt.Chart(df).mark_line().encode(
-        x=alt.X('days:T', axis=alt.Axis(grid=False, labels=False, title='')),
-        y=alt.Y('value:Q', axis=alt.Axis(grid=False, tickCount=5), title=''),
-        color=alt.Color('variable:N', legend=None, scale=alt.Scale(domain=domain, range=range_)),
+    line = alt.Chart(top_df).transform_filter(
+        micro_cluster_selector
+    ).transform_fold(
+        ['ads', 'images', 'phones', 'location', 'micro-clusters', 'social accts', 'emails'],
+        as_=['variable', 'value']
+    ).transform_aggregate(
+        groupby=['days', 'variable'],
+        total='sum(value)'
+    ).mark_line().encode(
+        x=alt.X('days:T',
+                axis=alt.Axis(grid=False, labels=False, title='')),
+        y=alt.Y('total:Q',
+                impute=alt.ImputeParams(
+                    value=0, keyvals=[min(df.days), max(df.days)]),
+                axis=alt.Axis(grid=False, tickCount=5), title=''),
+        color=alt.Color('variable:N', legend=None,
+                        scale=alt.Scale(domain=domain, range=range_)),
         opacity=alt.value(0.5)
     ).transform_filter(
         alt.datum.variable != 'micro-clusters'
@@ -253,7 +324,15 @@ def stream_chart(df):
 
     # Transparent selectors across the chart. This is what tells us
     # the x-value of the cursor
-    selectors = alt.Chart(df).mark_point().encode(
+    selectors = alt.Chart(top_df).transform_filter(
+        micro_cluster_selector
+    ).transform_fold(
+        ['ads', 'images', 'phones', 'location', 'micro-clusters'],
+        as_=['variable', 'value']
+    ).transform_aggregate(
+        groupby=['days', 'variable'],
+        total='sum(value)'
+    ).mark_point().encode(
         x='days:T',
         opacity=alt.value(0),
     ).add_selection(
@@ -266,22 +345,38 @@ def stream_chart(df):
     )
 
     # Draw text labels near the points, and highlight based on selection
-    text = line.mark_text(
+    left_text = line.mark_text(
         align='left',
         dx=5, dy=-5,
-        #blend=alt.Blend('multiply')
     ).encode(
         text=alt.condition(nearest, 'label:N', alt.value(' ')),
         size=alt.value(20),
         opacity=alt.value(1)
     ).transform_calculate(
-        label='datum.value + " " + datum.variable'
+        label='datum.total + " " + datum.variable'
     ).transform_filter(
-        alt.datum.value > 0
+        (alt.datum.total > 0)
+    ).transform_filter(
+        gen_cutoff_str(cutoff_day, '<')
+    )
+
+    right_text = line.mark_text(
+        align='right',
+        dx=5, dy=-5,
+    ).encode(
+        text=alt.condition(nearest, 'label:N', alt.value(' ')),
+        size=alt.value(20),
+        opacity=alt.value(1)
+    ).transform_calculate(
+        label='datum.total + " " + datum.variable'
+    ).transform_filter(
+        (alt.datum.total > 0)
+    ).transform_filter(
+        gen_cutoff_str(cutoff_day, '>')
     )
 
     # Draw a rule at the location of the selection
-    rules = alt.Chart(df).mark_rule(color='gray').encode(
+    rules = alt.Chart(top_df).mark_rule(color='gray').encode(
         x='days:T',
     ).transform_filter(
         nearest
@@ -289,22 +384,29 @@ def stream_chart(df):
 
     # Put the five layers into a chart and bind the data
     c1 = alt.layer(
-        line, rules, selectors, points, text
+        line, rules, selectors, points, left_text, right_text
     ).properties(
         width=625,
-        height=320
+        height=256
     )
 
     # The basic line
-    ad_line = alt.Chart(df).mark_line().encode(
+    ad_line = alt.Chart(bot_df).transform_aggregate(
+        groupby=['days'],
+        total='distinct(micro-clusters)'
+    ).transform_calculate(
+        total='datum.total-1'
+    ).mark_line().encode(
         x=alt.X('days:T',
-            axis=alt.Axis(grid=False, tickCount=5, format=utils.DATE_FORMAT),
-            title=''),
-        y=alt.Y('value:Q', axis=alt.Axis(grid=False, tickCount=1), title=''),
-        color=alt.Color('variable:N', legend=alt.Legend(title=None)),
+                axis=alt.Axis(grid=False, tickCount=5,
+                              format=utils.DATE_FORMAT),
+                title=''),
+        y=alt.Y('total:Q',
+                impute=alt.ImputeParams(
+                    value=0, keyvals=[min(df.days), max(df.days)]),
+                axis=alt.Axis(grid=False, tickCount=1), title=''),
+        color=alt.value(utils.CLUSTER_COLOR),
         opacity=alt.value(0.5)
-    ).transform_filter(
-        alt.datum.variable == 'micro-clusters'
     )
 
     # Draw points on the line, and highlight based on selection
@@ -313,31 +415,42 @@ def stream_chart(df):
     )
 
     # Draw text labels near the points, and highlight based on selection
-    ad_text = ad_line.mark_text(
+    left_text = ad_line.mark_text(
         align='left',
         dx=5, dy=-5,
-        #blend=alt.Blend('multiply'),
     ).encode(
         text=alt.condition(nearest, 'label:N', alt.value(' ')),
         size=alt.value(20),
         opacity=alt.value(1)
     ).transform_calculate(
-        label='datum.value + " " + datum.variable'
+        label='datum.total + " micro-clusters"'
+    ).transform_filter(
+        alt.datum.total > 0
+    ).transform_filter(
+        gen_cutoff_str(cutoff_day, '<')
+    )
+
+    right_text = ad_line.mark_text(
+        align='right',
+        dx=5, dy=-5,
+    ).encode(
+        text=alt.condition(nearest, 'label:N', alt.value(' ')),
+        size=alt.value(20),
+        opacity=alt.value(1)
+    ).transform_calculate(
+        label='datum.total + " micro-clusters"'
+    ).transform_filter(
+        alt.datum.total > 0
+    ).transform_filter(
+        gen_cutoff_str(cutoff_day, '>')
     )
 
     # Put the five layers into a chart and bind the data
     c2 = alt.layer(
-        ad_line, rules, selectors, ad_points, ad_text
+        ad_line, rules, selectors, ad_points, left_text, right_text
     ).properties(
         width=625,
-        height=75
+        height=50
     )
 
-    return alt.vconcat(c1, c2,
-        padding={'top': 5, 'bottom': 5, 'right': 150, 'left': 5},
-        spacing=0
-    ).configure_axis(
-        labelFontSize=utils.SMALL_FONT_SIZE,
-        titleFontSize=utils.BIG_FONT_SIZE
-    )
-    
+    return alt.vconcat(c1, c2)

@@ -30,8 +30,6 @@ FEATURE_RENAMING = {
     'image_id': 'images',
     'email': 'emails',
     'social': 'social accts',
-    'city_id': 'locations',
-    'LSH label': 'micro-clusters'
 }
 
 # all colors from category10 colorscheme
@@ -49,7 +47,7 @@ STAT_TO_COLOR = {
     'ads': AD_COLOR,
     'micro-clusters': CLUSTER_COLOR,
     'images': IMAGE_COLOR,
-    'locations': LOCATION_COLOR,
+    'location': LOCATION_COLOR,
     'social accts': SOCIAL_COLOR
 }
 
@@ -82,10 +80,6 @@ def write_border(stats, state):
     stats_str = ''
     template = '<div class=stat, style="color: {color};">{text}</div>'
     for name, (count, unique) in stats.items():
-        # name = name.split()[1]
-        # if name == 'clusters':
-        #    name = 'micro-clusters'
-
         if name == 'image':
             name = 'images'
 
@@ -123,29 +117,29 @@ def write_border(stats, state):
         }}
 
         .header {{
-            padding: 10px 16px;
+            padding: 10px 16px 10px 16px;
             background: #353535;
             color: #f1f1f1;
             position: absolute;
-            top: -80px;
+            top: -100px;
             width: 101%;
             font-size: 30px;
         }}
 
         .label_button {{
-            margin-bottom: 0px;
+            margin-bottom: -60px;
             margin-top: 0px;
             font-weight: bold;
         }}
 
-        # ht {{
+        #ht {{
             font-size: 20px;
             margin: 0px 0px -15px 0px;
             padding: 0px;
             color: #bbbbbb;
         }}
 
-        # title {{
+        #title {{
             position: float;
             float: left;
         }}
@@ -178,11 +172,11 @@ def write_border(stats, state):
         h1 {{
             color: #f1f1f1;
             padding: 0;
-            margin-top: -10px;
+            margin-top: 10px;
         }}
 
         .stButton {{
-            margin-top: -65px;
+            margin-top: -85px;
             font-size: 19px;
         }}
 
@@ -218,7 +212,7 @@ def write_border(stats, state):
 
 
 # Generic utils
-@st.cache  # (show_spinner=False)
+@st.cache
 def read_csv(filename, keep_cols=[], rename_cols={}):
     ''' read csv into Pandas DataFrame
         :param filename:    location of csv file
@@ -235,7 +229,7 @@ def read_csv(filename, keep_cols=[], rename_cols={}):
     return df
 
 
-@st.cache(hash_funcs={types.GeneratorType: id}, show_spinner=False)
+@st.cache(hash_funcs={types.GeneratorType: id}, show_spinner=False, suppress_st_warning=True)
 def get_subdf(df, state, date_col='day_posted'):
     ''' get subset of DataFrame based on state.cluster, do location & date processing
         :param df:          DataFrame to take subset of
@@ -244,9 +238,6 @@ def get_subdf(df, state, date_col='day_posted'):
         :return:            subset of DataFrame with nicely formatted locatino & date'''
     subdf = df[df['LSH label'].isin(state.cluster)].copy()
 
-    if 'location' in subdf.columns:  # means pre-processed script already ran
-        return subdf
-
     subdf = gen_locations(subdf)
 
     subdf['location'] = [prettify_location(
@@ -254,12 +245,16 @@ def get_subdf(df, state, date_col='day_posted'):
 
     subdf[date_col] = pd.to_datetime(
         subdf[date_col], infer_datetime_format=True)
-    subdf[date_col] = subdf[date_col].dt.tz_localize(None)
+    subdf[date_col] = subdf[date_col].dt.normalize()
 
+    subdf = subdf.rename(
+        columns={date_col: 'days', 'LSH label': 'micro-clusters'}
+    ).drop(
+        columns=['site_id', 'city_id', 'state_id', 'country_id', 'category_id', 'date_posted']
+    )
     return subdf
 
 
-# @st.cache(show_spinner=False)
 def pre_process_df(df, filename, date_col='day_posted', use_cache=True):
     clean_filename = './data/{}-cleaned.csv'.format(
         os.path.splitext(os.path.basename(filename))[0])
@@ -317,8 +312,8 @@ def filename_stub(filename):
     return os.path.basename(filename).split('.')[0]
 
 
-@st.cache  # (show_spinner=False)
-def basic_stats(df, cluster_label='LSH label'):
+@st.cache(show_spinner=False)
+def basic_stats(df, cluster_label='micro-clusters'):
     ''' get basic meta-cluster level stats, not based on time
         :param df:      Pandas DataFrame representing ads from one meta-cluster
         :param cols:    columns of DataFrame containing relevant metadata
@@ -329,7 +324,7 @@ def basic_stats(df, cluster_label='LSH label'):
         set(extract_field(df[col])))] for col in cols}
     metadata['ads'] = [len(df), '--']
     metadata['micro-clusters'] = [len(df[cluster_label].unique()), '--']
-    metadata['locations'] = [len(df.city_id.unique()), '--']
+    metadata['locations'] = [len(df.location.unique()), '--']
 
     return metadata
 
@@ -347,21 +342,25 @@ def top_n(df, groupby, sortby, n=10):
 
     def to_subscript(num): return ''.join(
         [subscript_dict[s] for s in str(num)])
+
+    df = df.reset_index()
+
     top_n = df.groupby(
         groupby
-    ).sum(
-        numeric_only=True
+    ).agg(
+        {sortby: 'sum', groupby: 'first'}
     ).sort_values(
         by=sortby,
         ascending=False
     ).index.values[:n]
+
 
     to_map = {num: 'c{}'.format(to_subscript(index))
               for index, num in enumerate(top_n)}
 
     top_df = df[df[groupby].isin(top_n)].copy()
     top_df[groupby] = top_df[groupby].map(to_map)
-    return top_df
+    return top_df, to_map
 
 
 # Location data related functions
@@ -371,20 +370,22 @@ def get_center_scale(lat, lon):
         :param lat: list of latitudes
         :param lon: list of longitudes
         :return:    center (midpoint) and scaling '''
+    default_scale = 500
     def midpoint(lst): return (max(lst) + min(lst)) / 2
 
     def scale(lst, const): return const*2 / (max(lst) -
-                                             min(lst)) if max(lst) - min(lst) else 100
+                                             min(lst)) if max(lst) - min(lst) else default_scale
 
-    center = midpoint(lon), midpoint(lat)
 
     scale_lat = scale(lat, 90)
     scale_lon = scale(lon, 180)
 
-    return center, min(min(scale_lat, scale_lon) * 100, 2000)
+    center = midpoint(lon)*1.5, midpoint(lat)*1.5
 
 
-@st.cache
+    return center, min([scale_lat*50, scale_lon*50, default_scale])
+
+@st.cache(allow_output_mutation=True)
 def gen_locations(df):
     ''' generate latitude and longitude coordinates given city_id
         :param df:  Pandas DataFrame with column "city_id" to get coordinates from
@@ -421,7 +422,7 @@ def aggregate_locations(df):
         :return     DataFrame with location count data '''
 
     return df.groupby(
-        ['location'],
+        ['location', 'micro-clusters'],
         as_index=False
     ).agg({
         'ad_id': 'count',
@@ -464,7 +465,7 @@ def extract_field_dates(df, col_name, date_col):
 
 
 @st.cache(show_spinner=False)
-def cluster_feature_extract(df, cluster_label='LSH label', date_col='days', loc_col='city_id'):
+def cluster_feature_extract(df, cluster_label='micro-clusters', date_col='days', loc_col='location'):
     ''' extract important time-based features for a particular cluster
         :param df:          Pandas DataFrame representing one meta-cluster
         :param date_col:    column from DataFrame representing time data
@@ -476,9 +477,14 @@ def cluster_feature_extract(df, cluster_label='LSH label', date_col='days', loc_
     agg_dict = {name: total for name in FEATURE_RENAMING.keys()}
     agg_dict[loc_col] = lambda series: len(series.unique())
 
+    keep_mc = df.groupby(
+        cluster_label
+    ).agg('count')
+
+    df = df[df['micro-clusters'].isin(keep_mc.index.values[:10])]
+
     return df.groupby(
         [date_col, cluster_label],
-        as_index=False,
         sort=False
     ).agg(
         agg_dict
@@ -486,25 +492,16 @@ def cluster_feature_extract(df, cluster_label='LSH label', date_col='days', loc_
         columns=FEATURE_RENAMING
     )
 
+    # problem: cluster_feature_extract df doesn't have micro-clusters in it, which we are using for topn. Do we need that as arg for topn? Maybe...?
+
 
 @st.cache(show_spinner=False)
-def feature_extract(df, cluster_label='LSH label', date_col='days', loc_col='city_id'):
+def feature_extract(df, cluster_label='micro-clusters', date_col='days', loc_col='location'):
     micro_cluster_features = cluster_feature_extract(
         df, cluster_label, date_col, loc_col)
     header_stats = basic_stats(df)
 
-    feature_cols = [f for f in FEATURE_RENAMING.values() if f != 'ads']
-
-    agg_dict = {f: 'sum' for f in feature_cols if header_stats[f][0]}
-    agg_dict['micro-clusters'] = 'count'
-    agg_dict['locations'] = lambda series: series.nunique()
-
-    features = micro_cluster_features.groupby(
-        'days', as_index=False).agg(agg_dict)
-    timeline_features = pd.melt(
-        features, id_vars=['days'], value_vars=feature_cols)
-
-    return header_stats, micro_cluster_features, timeline_features
+    return header_stats, micro_cluster_features
 
 
 # Graph related utils
@@ -565,8 +562,6 @@ def get_all_template_text(directory):
     to_write = []
     is_first = True
     for i, folder in enumerate(os.listdir(directory)):
-        if folder != 'template_12':
-            continue
         result_loc = '{}/{}/text.pkl'.format(directory, folder)
         if is_first:
             is_first = False
@@ -651,10 +646,9 @@ def get_template_text(i, template, ads):
 
 def write_labels(filename, meta_cluster_label, cluster_labels, labels):
     print('filename:', filename)
-    print(labels)
     label_filename = '{}-meta-labels.csv'.format(os.path.splitext(filename)[0])
     if os.path.exists(label_filename):
-        label_df = read_csv('{}-meta-labels.csv'.format(filename))
+        label_df = read_csv(label_filename)
     else:
         label_df = pd.DataFrame(
             columns=['meta_cluster_label', 'cluster_labels'] + list(labels.keys()))
