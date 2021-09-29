@@ -28,8 +28,6 @@ def gen_page_content(df):
     utils.write_border(header_stats)
 
     _, last_col = st.columns([10, 1])
-    last_col.button('Next meta-cluster',
-                    on_click=utils.write_labels, args=([filename]))
 
     left_col, _, mid_col, _, right_col = st.columns((1, 0.1, 1, 0.1, 1))
 
@@ -79,11 +77,17 @@ def gen_page_content(df):
     classes = ('Trafficking', 'Spam', 'Scam', 'Massage parlor', 'Benign')
     options = ('1: Very unlikely', '2: Unlikely',
                '3: Unsure', '4: Likely', '5: Very likely')
-    for index, cluster_type in enumerate(classes):
-        right_col.write(
-            '<p class="label_button">{}</p>'.format(cluster_type), unsafe_allow_html=True)
-        labels.append(
-            right_col.select_slider('',  options, key=str(index)))
+
+    with right_col:
+        with st.form(key='labeling'):
+            for index, cluster_type in enumerate(classes):
+                st.write(
+                    '<p class="label_button">{}</p>'.format(cluster_type), unsafe_allow_html=True)
+                labels.append(
+                    st.select_slider('',  options, key=str(index)))
+
+            st.form_submit_button('Next meta-cluster',
+                                  on_click=utils.write_labels, args=([filename]))
 
     st.session_state.labels = {class_: int(label.split(
         ':')[0]) for class_, label in zip(classes, labels)}

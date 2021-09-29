@@ -180,11 +180,6 @@ def write_border(stats):
             height: auto!important;
         }}
 
-        .stButton {{
-            margin-top: -85px;
-            font-size: 19px;
-        }}
-
         .stSlider {{
             padding: 0px 11% 0px 11%;
             font-size: 20px;
@@ -195,9 +190,6 @@ def write_border(stats):
         }}
 
         div.stButton > button:first-child {{
-            color: #f1f1f1;
-            background-color: #353535;
-            border: 3px solid #f1f1f1;
         }}
 
         p.ad_text {{
@@ -664,7 +656,6 @@ def write_labels(filename):
     try:
         st.session_state.cluster = next(st.session_state.gen_clusters)
         st.session_state.index += 1
-        print(st.session_state.index, st.session_state.cluster)
     except StopIteration:
         st.session_state.is_stop = True
 
