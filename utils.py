@@ -553,6 +553,7 @@ def gen_ccs(graph):
 
 
 # Text annotation utils
+@st.cache
 def get_all_template_text(base_dir, labels):
     ''' check a directory for all possible templates and annotate them
         :param directory:   directory to check for subdirs containing templates

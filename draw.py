@@ -58,7 +58,7 @@ def templates(directory, df, labels, is_infoshield):
                    )
 
 
-# @st.cache(hash_funcs={alt.vegalite.v4.api.Selection: lambda x: x.name}, allow_output_mutation=True)
+@st.cache(hash_funcs={alt.vegalite.v4.api.Selection: lambda x: x.name}, allow_output_mutation=True)
 def map(subdf, top_map, micro_cluster_selector, date_range):
     ''' generate map with ad location data
         :param df:  Pandas DataFrame with latitude, longitude, and count data
@@ -81,7 +81,7 @@ def map(subdf, top_map, micro_cluster_selector, date_range):
         fill='#eeeeee',
         stroke='#DDDDDD'
     ).properties(
-        height=400,
+        height=475,
         width=700
     )
 
@@ -136,7 +136,7 @@ def bubble_chart(df, y, facet, tooltip):
     )
 
 
-# @st.cache(allow_output_mutation=True)
+@st.cache(allow_output_mutation=True)
 def strip_plot(df, micro_cluster_selector, y, facet, tooltip, sort=None, show_labels=True, colorscheme='blues'):
     ''' create strip plot with heatmap
         :param df:      Pandas DataFrame to display
@@ -148,8 +148,12 @@ def strip_plot(df, micro_cluster_selector, y, facet, tooltip, sort=None, show_la
     thickness = 1000 / (max(df.days.dt.day) - min(df.days.dt.day) + 1) / 10
     sort_ = sorted(list(df[facet.split(':')[0]].unique()))
 
+    max_val = max(df[y.split(':')[0]])
+    print(max_val)
+
     def gen_color():
-        blue = alt.Color(y+':Q', scale=alt.Scale(scheme=colorscheme))
+        blue = alt.Color(
+            y+':Q', scale=alt.Scale(scheme=colorscheme, domain=[0, max_val]))
         grey = alt.value('lightgray')
         pred = alt.FieldOneOfPredicate(
             'micro-clusters', micro_cluster_selector)
@@ -165,7 +169,7 @@ def strip_plot(df, micro_cluster_selector, y, facet, tooltip, sort=None, show_la
                               format=utils.DATE_FORMAT),
                 title=''),
         y=alt.Y(facet,
-                axis=alt.Axis(grid=False, domain=False, title='', labelPadding=10,
+                axis=alt.Axis(grid=False, domain=False, title='', labelPadding=5,
                               tickWidth=0, labelFontSize=utils.SMALL_FONT_SIZE),
                 sort=sort_,
                 ),
@@ -185,7 +189,8 @@ def strip_plot(df, micro_cluster_selector, y, facet, tooltip, sort=None, show_la
         labelFontSize=utils.SMALL_FONT_SIZE,
         titleFontSize=utils.BIG_FONT_SIZE,
         orient='top',
-        title=None
+        title=None,
+        tickCount=2
     )
 
 
@@ -266,7 +271,7 @@ def contact_bar_chart(data, col):
     )
 
 
-# @st.cache(hash_funcs={alt.vegalite.v4.api.Selection: lambda x: x.name}, allow_output_mutation=True)
+@st.cache(hash_funcs={alt.vegalite.v4.api.Selection: lambda x: x.name}, allow_output_mutation=True)
 def stream_chart(df, micro_cluster_selector):
     def gen_cutoff_str(cutoff_day, op):
         yr = 'year(datum.days)'
@@ -318,7 +323,7 @@ def stream_chart(df, micro_cluster_selector):
     ).transform_aggregate(
         groupby=['days', 'variable'],
         total='sum(value)'
-    ).mark_line().encode(
+    ).mark_line(interpolate='step-before').encode(
         x=alt.X('days:T',
                 axis=alt.Axis(grid=False, labels=False, title='')),
         y=alt.Y('total:Q',
@@ -395,7 +400,7 @@ def stream_chart(df, micro_cluster_selector):
         line, rules, selectors, points, left_text, right_text
     ).properties(
         width=625,
-        height=256
+        height=300
     )
 
     # The basic line
@@ -404,7 +409,7 @@ def stream_chart(df, micro_cluster_selector):
         total='distinct(micro-clusters)'
     ).transform_calculate(
         total='datum.total-1'
-    ).mark_line().encode(
+    ).mark_line(interpolate='step-before').encode(
         x=alt.X('days:T',
                 axis=alt.Axis(grid=False, tickCount=5,
                               format=utils.DATE_FORMAT),
@@ -458,7 +463,7 @@ def stream_chart(df, micro_cluster_selector):
         ad_line, rules, selectors, ad_points, left_text, right_text
     ).properties(
         width=625,
-        height=50
+        height=75
     )
 
     return alt.vconcat(c1, c2).configure_view(

@@ -29,25 +29,25 @@ def gen_page_content(df):
 
     mcs = sorted(['c{}'.format(val)
                  for _, val in utils.SUBSCRIPT_DICT.items()])
-    micro_cluster_selector = st.multiselect(
-        'Pick a subset of micro-clusters to inspect', mcs)
 
-    left_col, _, mid_col, _, right_col = st.columns((1, 0.1, 1, 0.1, 1))
+    left_col, _, mid_col, _, right_col = st.columns((1, 0.05, 1, 0.05, 1))
 
     # strip plot with heatmap
     with left_col:
         st.subheader('**# Ads over time**: one row is one micro-cluster')
+        micro_cluster_selector = st.multiselect(
+            'Pick a subset of micro-clusters to inspect', mcs)
 
         top_n_params, chart_params = utils.BY_CLUSTER_PARAMS
         top_df, top_map = utils.top_n(micro_cluster_features, **top_n_params)
         c1 = draw.strip_plot(top_df, micro_cluster_selector, **chart_params)
-        st.write(c1)
+        st.write(c1, use_container_width=True)
 
     # display features over time, aggregated forall clusters
     with mid_col:
         st.subheader('**Metadata over time** of meta-cluster')
         c2 = draw.stream_chart(top_df, micro_cluster_selector)
-        st.write(c2)
+        st.write(c2, use_container_width=True)
 
     # show map of ad locations
     with right_col:
