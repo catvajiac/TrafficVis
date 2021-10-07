@@ -1,24 +1,23 @@
-import functools
-from altair.utils.core import infer_dtype
-import networkx as nx
-import numpy as np
-import os
-import sys
-import pandas as pd
-import pickle as pkl
-import streamlit as st
-import types
-
-from annotated_text import annotated_text, annotation
 from collections import defaultdict
+from annotated_text import annotated_text, annotation
+import types
+import streamlit as st
+import pickle as pkl
+import pandas as pd
+import sys
+import os
+import numpy as np
+import networkx as nx
+from altair.utils.core import infer_dtype
+import functools
 
 
 # Params
 
 DATE_FORMAT = "%e %b %y"
 
-BIG_FONT_SIZE = 24
-SMALL_FONT_SIZE = 20
+BIG_FONT_SIZE = 32
+SMALL_FONT_SIZE = 28
 
 SUBSCRIPT_DICT = {'0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
                   '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉'}
@@ -110,7 +109,7 @@ def write_border(stats):
     st.write('''
     <style>
         p {{
-            font-size: 18px;
+            font-size: 24px;
             margin: 0;
         }}
 
@@ -126,7 +125,7 @@ def write_border(stats):
             position: absolute;
             top: -100px;
             width: 101%;
-            font-size: 30px;
+            font-size: 40px;
         }}
 
         .label_button {{
@@ -136,7 +135,7 @@ def write_border(stats):
         }}
 
         #ht {{
-            font-size: 20px;
+            font-size: 30px;
             margin: 0px 0px -15px 0px;
             padding: 0px;
             color: #bbbbbb;
@@ -148,14 +147,14 @@ def write_border(stats):
         }}
 
         .stat {{
-            margin-left: 5%;
+            margin-left: 8%;
             position: float;
             float: left;
             text-align: center;
         }}
 
         .stat_name {{
-            font-size: 20px;
+            font-size: 30px;
             margin: 2px 0px 0px 0px;
 
         }}
@@ -185,11 +184,11 @@ def write_border(stats):
 
         .stSlider {{
             padding: 0px 13% 0px 13%;
-            font-size: 14px;
+            font-size: 18px;
         }}
 
         [data-testid] {{
-            font-size: 14px;
+            font-size: 18px;
         }}
 
         .stForm {{
@@ -216,7 +215,7 @@ def write_border(stats):
 
 
 # Generic utils
-@st.cache
+@st.cache(suppress_st_warning=True)
 def read_csv(filename, keep_cols=[], rename_cols={}):
     ''' read csv into Pandas DataFrame
         :param filename:    location of csv file
@@ -284,7 +283,7 @@ def pre_process_df(df, filename, date_col='day_posted', use_cache=True):
     return copy_df
 
 
-@st.cache  # (show_spinner=False)
+@st.cache(suppress_st_warning=True)  # (show_spinner=False)
 def extract_field(series):
     ''' extract values from Pandas Series, where some entries represent multiple values
         :param series:  Pandas Series to get values from
@@ -297,7 +296,7 @@ def extract_field(series):
     return np.concatenate(series.apply(lambda val: str(val).split(';')).values)
 
 
-@st.cache
+@st.cache(suppress_st_warning=True)
 def pretty_s(s):
     ''' prettify a string for display
         :param s:  string to prettify
@@ -309,7 +308,7 @@ def pretty_s(s):
     return '{}s'.format(s.replace('_', ' '))
 
 
-@st.cache
+@st.cache(suppress_st_warning=True)
 def filename_stub(filename):
     ''' strip path and extension from filename
         :param filename:    string of filename
@@ -317,7 +316,7 @@ def filename_stub(filename):
     return os.path.basename(filename).split('.')[0]
 
 
-@st.cache(show_spinner=False)
+@st.cache(show_spinner=False, suppress_st_warning=True)
 def basic_stats(df, cluster_label='micro-clusters'):
     ''' get basic meta-cluster level stats, not based on time
         :param df:      Pandas DataFrame representing ads from one meta-cluster
@@ -334,7 +333,7 @@ def basic_stats(df, cluster_label='micro-clusters'):
     return metadata
 
 
-@st.cache
+@st.cache(suppress_st_warning=True)
 def top_n(df, groupby, sortby, n=10):
     ''' get the top n groups from a DataFrame
         :param df:      Pandas DataFrame for one meta-cluster
@@ -366,7 +365,7 @@ def top_n(df, groupby, sortby, n=10):
 
 
 # Location data related functions
-@st.cache
+@st.cache(suppress_st_warning=True)
 def get_center_scale(lat, lon):
     ''' get centering and scale parameters for map display
         :param lat: list of latitudes
@@ -386,7 +385,7 @@ def get_center_scale(lat, lon):
     return center, min([scale_lat*50, scale_lon*50, default_scale])
 
 
-@st.cache(allow_output_mutation=True)
+@st.cache(allow_output_mutation=True, suppress_st_warning=True)
 def gen_locations(df):
     ''' generate latitude and longitude coordinates given city_id
         :param df:  Pandas DataFrame with column "city_id" to get coordinates from
@@ -398,7 +397,7 @@ def gen_locations(df):
     return pd.merge(df, cities_df, left_on='city_id', right_on='id', sort=False)
 
 
-@st.cache
+@st.cache(suppress_st_warning=True)
 def prettify_location(city, country):
     ''' make pretty location string based on city, country
         :param city:    city_id as specified by Marinus
@@ -416,7 +415,7 @@ def prettify_location(city, country):
     return ', '.join([city_str, country_str])
 
 
-@st.cache
+@st.cache(suppress_st_warning=True)
 def aggregate_locations(df):
     ''' get location counts from DataFrame
         :param df:  Pandas DataFrame with column "location"
@@ -435,7 +434,7 @@ def aggregate_locations(df):
 
 
 # Date related
-@st.cache
+@st.cache(suppress_st_warning=True)
 def extract_field_dates(df, col_name, date_col):
     ''' extract values from Pandas DataFrame with date, where one row represents multiple values
         :param df:          Pandas DataFrame to get data from
@@ -465,7 +464,7 @@ def extract_field_dates(df, col_name, date_col):
     # return pd.DataFrame(np.concatenate(df.apply(get_data, axis=1)), columns=df.columns)
 
 
-@st.cache(show_spinner=False)
+@st.cache(show_spinner=False, suppress_st_warning=True)
 def cluster_feature_extract(df, cluster_label='micro-clusters', date_col='days', loc_col='location'):
     ''' extract important time-based features for a particular cluster
         :param df:          Pandas DataFrame representing one meta-cluster
@@ -496,7 +495,7 @@ def cluster_feature_extract(df, cluster_label='micro-clusters', date_col='days',
     # problem: cluster_feature_extract df doesn't have micro-clusters in it, which we are using for topn. Do we need that as arg for topn? Maybe...?
 
 
-@st.cache(show_spinner=False)
+@st.cache(show_spinner=False, suppress_st_warning=True)
 def feature_extract(df, cluster_label='micro-clusters', date_col='days', loc_col='location'):
     micro_cluster_features = cluster_feature_extract(
         df, cluster_label, date_col, loc_col)
@@ -553,7 +552,7 @@ def gen_ccs(graph):
 
 
 # Text annotation utils
-@st.cache
+@st.cache(allow_output_mutation=True, suppress_st_warning=True)
 def get_all_template_text(base_dir, labels):
     ''' check a directory for all possible templates and annotate them
         :param directory:   directory to check for subdirs containing templates

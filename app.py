@@ -34,7 +34,7 @@ def gen_page_content(df):
 
     # strip plot with heatmap
     with left_col:
-        st.subheader('**# Ads over time**: one row is one micro-cluster')
+        st.header('**# Ads over time**: one row is one micro-cluster')
         micro_cluster_selector = st.multiselect(
             'Pick a subset of micro-clusters to inspect', mcs)
 
@@ -45,13 +45,13 @@ def gen_page_content(df):
 
     # display features over time, aggregated forall clusters
     with mid_col:
-        st.subheader('**Metadata over time** of meta-cluster')
+        st.header('**Metadata over time** of meta-cluster')
         c2 = draw.stream_chart(top_df, micro_cluster_selector)
         st.write(c2, use_container_width=True)
 
     # show map of ad locations
     with right_col:
-        st.subheader('**Geographical spread of ads**')
+        st.header('**Geographical spread of ads**')
         date_range = pd.date_range(min(subdf.days), max(
             subdf.days)).strftime(utils.DATE_FORMAT)
         # dates = st.select_slider(
@@ -63,17 +63,17 @@ def gen_page_content(df):
 
     # st.write(draw.top_row(c1, c2, c3), use_container_width=True)
 
-    left_col, _, right_col = st.columns((4, 0.05, 1.2))
-
     # template / ad text visualization
+    if len(micro_cluster_selector):
+        st.header(
+            '**Ad text** organized by micro-cluster, for {}'.format(
+                ', '.join(micro_cluster_selector)))
+    else:
+        st.header(
+            '**Template text:** select a micro-cluster to see actual ads')
+
+    left_col, _, right_col = st.columns((4, 0.05, 1.2))
     with left_col:
-        if len(micro_cluster_selector):
-            st.subheader(
-                '**Ad text** organized by micro-cluster, for {}'.format(
-                    ', '.join(micro_cluster_selector)))
-        else:
-            st.subheader(
-                '**Template text:** select a micro-cluster to see actual ads')
         is_infoshield = True
 
         start_path = '../InfoShield/results/'

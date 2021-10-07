@@ -13,7 +13,7 @@ import types
 alt.data_transformers.enable('csv')
 
 
-@st.cache(show_spinner=False)
+@st.cache(show_spinner=False, suppress_st_warning=True)
 def top_row(c1, c2, c3):
     df = pd.DataFrame({'day_posted': [0]})
     dummy_chart = alt.Chart(df).mark_geoshape().encode(
@@ -54,11 +54,11 @@ def templates(directory, df, labels, is_infoshield):
 
     annotated_text(*to_write,
                    scrolling=True,
-                   height=580,
+                   height=900,
                    )
 
 
-@st.cache(hash_funcs={alt.vegalite.v4.api.Selection: lambda x: x.name}, allow_output_mutation=True)
+@st.cache(hash_funcs={alt.vegalite.v4.api.Selection: lambda x: x.name}, allow_output_mutation=True, suppress_st_warning=True)
 def map(subdf, top_map, micro_cluster_selector, date_range):
     ''' generate map with ad location data
         :param df:  Pandas DataFrame with latitude, longitude, and count data
@@ -81,9 +81,8 @@ def map(subdf, top_map, micro_cluster_selector, date_range):
         fill='#eeeeee',
         stroke='#DDDDDD'
     ).properties(
-        height=475,
-        width=700
-    )
+        height=650,
+        width=1000)
 
     agg_df = utils.aggregate_locations(df)
     center, scale = utils.get_center_scale(agg_df.lat, agg_df.lon)
@@ -136,7 +135,7 @@ def bubble_chart(df, y, facet, tooltip):
     )
 
 
-@st.cache(allow_output_mutation=True)
+@st.cache(allow_output_mutation=True, suppress_st_warning=True)
 def strip_plot(df, micro_cluster_selector, y, facet, tooltip, sort=None, show_labels=True, colorscheme='blues'):
     ''' create strip plot with heatmap
         :param df:      Pandas DataFrame to display
@@ -145,7 +144,7 @@ def strip_plot(df, micro_cluster_selector, y, facet, tooltip, sort=None, show_la
         :param tooltip: list of DataFrame columns to include in tooltip
         :return:        altair strip plot '''
 
-    thickness = 1000 / (max(df.days.dt.day) - min(df.days.dt.day) + 1) / 10
+    thickness = 1500 / (max(df.days.dt.day) - min(df.days.dt.day) + 1) / 10
     sort_ = sorted(list(df[facet.split(':')[0]].unique()))
 
     max_val = max(df[y.split(':')[0]])
@@ -163,21 +162,21 @@ def strip_plot(df, micro_cluster_selector, y, facet, tooltip, sort=None, show_la
 
         return blue
 
-    return alt.Chart(df).mark_tick(thickness=thickness, lineHeight=100).encode(
+    return alt.Chart(df).mark_tick(thickness=thickness, lineHeight=150).encode(
         x=alt.X('days:T',
                 axis=alt.Axis(grid=False, tickCount=5,
                               format=utils.DATE_FORMAT),
                 title=''),
         y=alt.Y(facet,
                 axis=alt.Axis(grid=False, domain=False, title='', labelPadding=5,
-                              tickWidth=0, labelFontSize=utils.SMALL_FONT_SIZE),
+                              tickWidth=0, labelFontSize=utils.BIG_FONT_SIZE),
                 sort=sort_,
                 ),
         color=gen_color(),
         tooltip=tooltip
     ).properties(
-        width=700,
-        height=400
+        width=1000,
+        height=600
     ).configure_view(
         stroke=None
     ).configure_axis(
@@ -271,7 +270,7 @@ def contact_bar_chart(data, col):
     )
 
 
-@st.cache(hash_funcs={alt.vegalite.v4.api.Selection: lambda x: x.name}, allow_output_mutation=True)
+@st.cache(hash_funcs={alt.vegalite.v4.api.Selection: lambda x: x.name}, allow_output_mutation=True, suppress_st_warning=True)
 def stream_chart(df, micro_cluster_selector):
     def gen_cutoff_str(cutoff_day, op):
         yr = 'year(datum.days)'
@@ -399,8 +398,8 @@ def stream_chart(df, micro_cluster_selector):
     c1 = alt.layer(
         line, rules, selectors, points, left_text, right_text
     ).properties(
-        width=625,
-        height=300
+        width=1000,
+        height=500
     )
 
     # The basic line
@@ -462,7 +461,7 @@ def stream_chart(df, micro_cluster_selector):
     c2 = alt.layer(
         ad_line, rules, selectors, ad_points, left_text, right_text
     ).properties(
-        width=625,
+        width=1000,
         height=75
     )
 
