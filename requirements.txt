@@ -1,0 +1,9 @@
+nx_altair==0.1.6
+altair==4.1.0
+networkx==2.5
+vega_datasets==0.9.0
+streamlit==0.77.0
+st_annotated_text==1.1.0
+pandas==1.1.5
+numpy==1.20.2
+click==7.1.2
